@@ -273,6 +273,26 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 	dev_t dev = 0;
 	int len;
 	const char *name = NULL;
+	char pagerefs[6];
+
+	unsigned long full_addr;
+
+	struct page *page = NULL;
+
+	pgd_t *pgd = NULL;
+	//pud_t *pud = NULL;
+	pmd_t *pmd = NULL;
+	pte_t *pte = NULL;
+
+	spinlock_t *ptl = NULL;
+
+
+	pagerefs[0] = '.';
+	pagerefs[1] = '.';
+	pagerefs[2] = '.';
+	pagerefs[3] = '.';
+	pagerefs[4] = '1';
+	pagerefs[5] = '\0';
 
 	if (file) {
 		struct inode *inode = vma->vm_file->f_path.dentry->d_inode;
@@ -289,7 +309,65 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 	if (stack_guard_page_end(vma, end))
 		end -= PAGE_SIZE;
 
-	seq_printf(m, "%08lx-%08lx %c%c%c%c %08llx %02x:%02x %lu %n",
+	printk("222222222222222222222\n");
+	pgd = pgd_offset(mm,start);
+	printk("12312312312312312312\n");
+
+	if(pgd == NULL || pgd_bad(*pgd)){
+	printk("4444444444444444444444\n");
+		return;
+	}
+
+/*
+	pud = pud_offset(pgd,start);
+
+
+
+	printk("5555555555555555555555\n");
+	if(pud == NULL || pud_none(*pud) || pud_bad(*pud)){
+	printk("6666666666666666666666666666\n");
+		return;
+	}
+
+
+	pmd = pmd_offset(pud,start);
+	if(pmd == NULL || pmd_none(*pmd) || pmd_bad(*pmd)){
+	printk("77777777777777777\n");
+		return;
+
+	}
+
+	//pte = pte_offset(pmd,start);
+
+*/
+	pmd = (pmd_t*)pgd;
+    	pte = pte_offset_map_lock(mm,pmd,start,&ptl);
+	if(!pte){
+	printk("88888888888888\n");	
+		return;
+	}
+
+	if(!pte_present(*pte)) {
+	printk("9999999999999999999999999\n");
+		pte_unmap_unlock(pte,ptl);
+		return;
+	}
+
+	page = pfn_to_page(pte_pfn(*pte));
+	if(!page) {
+	printk("==========================\n");
+		pte_unmap_unlock(pte,ptl);
+		return;
+	}
+	printk("ddddddddddddddddddddddddd\n");
+
+	full_addr = (*pte) & PAGE_MASK;
+	full_addr += start & (~PAGE_MASK);
+	pte_unmap_unlock(pte,ptl);
+
+	
+
+	seq_printf(m, "%08lx-%08lx %c%c%c%c %08llx %02x:%02x %lu %08lx-%08lx %s %n",
 			start,
 			end,
 			flags & VM_READ ? 'r' : '-',
@@ -297,7 +375,11 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 			flags & VM_EXEC ? 'x' : '-',
 			flags & VM_MAYSHARE ? 's' : 'p',
 			pgoff,
-			MAJOR(dev), MINOR(dev), ino, &len);
+			MAJOR(dev), MINOR(dev), ino, 
+			full_addr,
+			full_addr+1,
+			pagerefs,
+			&len);
 
 	/*
 	 * Print the dentry name for named mappings, and a
