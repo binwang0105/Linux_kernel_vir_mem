@@ -259,9 +259,130 @@ static int do_maps_open(struct inode *inode, struct file *file,
 	return ret;
 }
 
+
+static void print_field(struct seq_file *m, struct vm_area_struct *vma, struct mm_struct *mm, unsigned long addr){
+
+	spinlock_t *ptl;
+ 
+
+	struct page * page;
+	pgd_t *pgd = NULL;
+	pud_t *pud = NULL;
+	pmd_t *pmd = NULL;
+	pte_t *pte = NULL;
+	int num_ref;
+
+	if (!mm) {
+		return;
+	}
+
+	pgd = pgd_offset(mm,addr);
+
+	if(pgd_none(*pgd) || pgd_bad(*pgd)){
+		return;
+	}
+
+	pud = pud_offset(pgd,addr);
+
+	if(pud_none(*pud) || pud_bad(*pud)){
+		return;
+	}
+
+
+	pmd = pmd_offset(pud,addr);
+	if(pmd_none(*pmd) || pmd_bad(*pmd)){
+		return;
+	}
+
+
+	if (PageHighMem(pfn_to_page(pmd_val(*pmd) >> PAGE_SHIFT)))
+		return;
+
+
+ 
+	pte = pte_offset_map_lock(mm, pmd, addr, &ptl);
+ 
+
+	//pte = pte_offset_map(pmd, addr);
+	pte_unmap_unlock(pte,ptl);
+
+	if (!pte_present(*pte)){
+		seq_printf(m, ".");
+	}else{
+		page = follow_page(vma, addr, 0);
+		if(IS_ERR_OR_NULL(page))
+			return;
+
+		num_ref = page_mapcount(page);
+		//num_ref = page_count(page);
+		if(num_ref <= 9){
+			seq_printf(m, "%d", num_ref);
+		}else{
+			seq_printf(m, "x");
+		}
+
+
+	}
+
+}
+
+
+static unsigned long convert_vaddr_to_paddr(struct mm_struct *mm, unsigned long addr){
+	
+	spinlock_t *ptl;
+ 
+	unsigned long full_addr;
+
+	pgd_t *pgd = NULL;
+	pud_t *pud = NULL;
+	pmd_t *pmd = NULL;
+	pte_t *pte = NULL;
+
+	if (!mm) {//kernel
+		return 0;
+	}
+
+
+
+	pgd = pgd_offset(mm,addr);
+
+	if(pgd_none(*pgd) || pgd_bad(*pgd)){
+		return 0;
+	}
+
+	pud = pud_offset(pgd,addr);
+
+	if(pud_none(*pud) || pud_bad(*pud)){
+		return 0;
+	}
+
+
+	pmd = pmd_offset(pud,addr);
+	if(pmd_none(*pmd) || pmd_bad(*pmd)){
+		return 0;
+	}
+
+
+	if (PageHighMem(pfn_to_page(pmd_val(*pmd) >> PAGE_SHIFT)))
+		return 0;
+
+
+	pte = pte_offset_map_lock(mm, pmd, addr, &ptl);
+
+	pte_unmap_unlock(pte,ptl);
+
+	full_addr = (*pte) & PAGE_MASK;
+	full_addr += addr & (~PAGE_MASK);
+	
+	return full_addr;
+
+}
+
+
 static void
 show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 {
+
 	struct mm_struct *mm = vma->vm_mm;
 	struct file *file = vma->vm_file;
 	struct proc_maps_private *priv = m->private;
@@ -273,26 +394,10 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 	dev_t dev = 0;
 	int len;
 	const char *name = NULL;
-	char pagerefs[6];
+	unsigned long cur;
 
-	unsigned long full_addr;
-
-	struct page *page = NULL;
-
-	pgd_t *pgd = NULL;
-	//pud_t *pud = NULL;
-	pmd_t *pmd = NULL;
-	pte_t *pte = NULL;
-
-	spinlock_t *ptl = NULL;
-
-
-	pagerefs[0] = '.';
-	pagerefs[1] = '.';
-	pagerefs[2] = '.';
-	pagerefs[3] = '.';
-	pagerefs[4] = '1';
-	pagerefs[5] = '\0';
+	unsigned long pstart;
+	unsigned long pend;
 
 	if (file) {
 		struct inode *inode = vma->vm_file->f_path.dentry->d_inode;
@@ -309,65 +414,10 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 	if (stack_guard_page_end(vma, end))
 		end -= PAGE_SIZE;
 
-	printk("222222222222222222222\n");
-	pgd = pgd_offset(mm,start);
-	printk("12312312312312312312\n");
+	pstart = convert_vaddr_to_paddr(mm,start);
+	pend = convert_vaddr_to_paddr(mm,end-1)+1;
 
-	if(pgd == NULL || pgd_bad(*pgd)){
-	printk("4444444444444444444444\n");
-		return;
-	}
-
-/*
-	pud = pud_offset(pgd,start);
-
-
-
-	printk("5555555555555555555555\n");
-	if(pud == NULL || pud_none(*pud) || pud_bad(*pud)){
-	printk("6666666666666666666666666666\n");
-		return;
-	}
-
-
-	pmd = pmd_offset(pud,start);
-	if(pmd == NULL || pmd_none(*pmd) || pmd_bad(*pmd)){
-	printk("77777777777777777\n");
-		return;
-
-	}
-
-	//pte = pte_offset(pmd,start);
-
-*/
-	pmd = (pmd_t*)pgd;
-    	pte = pte_offset_map_lock(mm,pmd,start,&ptl);
-	if(!pte){
-	printk("88888888888888\n");	
-		return;
-	}
-
-	if(!pte_present(*pte)) {
-	printk("9999999999999999999999999\n");
-		pte_unmap_unlock(pte,ptl);
-		return;
-	}
-
-	page = pfn_to_page(pte_pfn(*pte));
-	if(!page) {
-	printk("==========================\n");
-		pte_unmap_unlock(pte,ptl);
-		return;
-	}
-	printk("ddddddddddddddddddddddddd\n");
-
-	full_addr = (*pte) & PAGE_MASK;
-	full_addr += start & (~PAGE_MASK);
-	pte_unmap_unlock(pte,ptl);
-
-	
-
-	seq_printf(m, "%08lx-%08lx %c%c%c%c %08llx %02x:%02x %lu %08lx-%08lx %s %n",
+	seq_printf(m, "%08lx-%08lx %c%c%c%c %08llx %02x:%02x %lu %08lx-%08lx %n",
 			start,
 			end,
 			flags & VM_READ ? 'r' : '-',
@@ -376,10 +426,18 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 			flags & VM_MAYSHARE ? 's' : 'p',
 			pgoff,
 			MAJOR(dev), MINOR(dev), ino, 
-			full_addr,
-			full_addr+1,
-			pagerefs,
+			pstart,
+			pend,
 			&len);
+	cur = start;
+	while(cur < end){
+		print_field(m,vma,mm,cur);
+		cur += PAGE_SIZE;
+	}
+
+	
+
+
 
 	/*
 	 * Print the dentry name for named mappings, and a
