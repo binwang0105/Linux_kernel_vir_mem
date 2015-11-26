@@ -40,6 +40,7 @@ static int test_1(void)
 	printf("[%08x,%08x)", (int)t1, (int)t1 + total_size);
 	printf(" ---------------\n");
 	print_maps();
+	munmap(t1, total_size);
 	return 0;
 }
 
@@ -61,6 +62,7 @@ static int test_2(void)
 	printf("[%08x,%08x)", (int)t2, (int)t2 + total_size);
 	printf(" ---------------\n");
 	print_maps();
+	munmap(t2, total_size);
 	return 0;
 }
 
@@ -83,6 +85,7 @@ static int test_3(void)
 	printf("[%08x,%08x)", (int)t3, (int)t3 + total_size);
 	printf(" ---------------\n");
 	print_maps();
+	munmap(t3, total_size);
 	return 0;
 }
 
@@ -93,89 +96,112 @@ static int test_4(void)
 	int page_size;
 	int total_size;
 	int i;
-	//pid_t pid;
+	pid_t pid;
 	page_size = getpagesize();
 	total_size = 10 * page_size;
 
 	t4 = (int*) mmap(0, total_size, PROT_WRITE, MAP_ANON | MAP_PRIVATE, 0, 0);
 	for(i = 0; i < total_size/page_size/2; i++) {
-/*
-		pid = fork();
-		if (pid < 0) {
-			printf("error in fork\n");
-			exit(-1);
-		}
-*/
-/*
-		if (pid > 0) {
-			*(t4 + i * page_size/sizeof(int)) = 0;
-			continue;
-		}
-*/
 		*(t4 + i * page_size/sizeof(int)) = 0;
-		*(t4 + i * page_size/sizeof(int)) = 1;
-		//return 0;
 	}
-
-	while (wait(NULL) > 0)
-		;
-
+	pid = fork();
+	if (pid < 0) {
+		printf("error in fork\n");
+		exit(-1);
+	}
+	if (pid > 0) {
+		while (wait(NULL) > 0)
+			;
+		munmap(t4, total_size);
+		return 0;
+	}
 	printf("\n\n\n--------------- test 4: ");
 	printf("[%08x,%08x)", (int)t4, (int)t4 + total_size);
 	printf(" ---------------\n");
 	print_maps();
-
-	return 0;
+	munmap(t4, total_size);
+	exit(0);
 }
 
 static int test_5(void)
 {
-	return 0;
+	int *t5;
+	int page_size;
+	int total_size;
+	int i;
+	pid_t pid;
+	page_size = getpagesize();
+	total_size = 10 * page_size;
+
+	t5 = (int*) mmap(0, total_size, PROT_WRITE, MAP_ANON | MAP_PRIVATE, 0, 0);
+	for(i = 0; i < total_size/page_size; i++) {
+		if (i == 4 || i == 5)
+			continue;
+		*(t5 + i * page_size/sizeof(int)) = 0;
+	}
+	pid = fork();
+	if (pid < 0) {
+		printf("error in fork\n");
+		exit(-1);
+	}
+	if (pid > 0) {
+		while (wait(NULL) > 0)
+			;
+		munmap(t5, total_size);
+		return 0;
+	}
+	for(i = 0; i < 4; i++) {
+		*(t5 + i * page_size/sizeof(int)) = 0;
+	}
+	printf("\n\n\n--------------- test 5: ");
+	printf("[%08x,%08x)", (int)t5, (int)t5 + total_size);
+	printf(" ---------------\n");
+	print_maps();
+	munmap(t5, total_size);
+	exit(0);
 }
 
 static int test_6(void)
 {
+	int *t6;
+	size_t page_size;
+	page_size = getpagesize();
+
+	t6 = (int*) mmap(0, 2000*page_size, PROT_WRITE, MAP_ANON | MAP_PRIVATE, 0, 0);
+
+	printf("\n\n\n--------------- test 6: ");
+	printf("[%08x,%08x)", (int)t6, (int)(t6 + 2000*page_size));
+	printf(" ---------------\n");
+
+	print_maps();
+	munmap(t6, 2000*page_size);
 	return 0;
 }
 
 static int test_7(void)
 {
+	size_t page_size;
+	page_size = getpagesize();
+
+	while(1){
+		if(mmap(NULL, 10*page_size, PROT_WRITE, MAP_ANON | MAP_PRIVATE, 0, 0) == MAP_FAILED) {
+			printf("\n\n\ntest 7: OOM\n\n");
+			exit(1);
+		}
+	}
+
 	return 0;
 }
 
 int main(int argc, char **argv)
 {
-	int i;
-	pid_t pid;
-
-
-	for(i = 1; i <= 7; i++){
-		pid = fork();
-		if (pid < 0) {
-			printf("error in fork\n");
-			return -1;
-		}
-		if (pid > 0)
-			continue;
-		if (i == 1)
-			test_1();
-		if (i == 2)
-			test_2();
-		if (i == 3)
-			test_3();
-		if (i == 4)
-			test_4();
-		if (i == 5)
-			test_5();
-		if (i == 6)
-			test_6();
-		if (i == 7)
-			test_7();
-		return 0;
-	}
-
-	while (wait(NULL) > 0)
-		;
+	test_1();
+	test_2();
+	test_3();
+	test_4();
+	test_5();
+	test_6();
+	test_7();
 
 	return 0;
 }

@@ -263,8 +263,6 @@ static int do_maps_open(struct inode *inode, struct file *file,
 static void print_field(struct seq_file *m, struct vm_area_struct *vma, struct mm_struct *mm, unsigned long addr){
 
 	spinlock_t *ptl;
- 
-
 	struct page * page;
 	pgd_t *pgd = NULL;
 	pud_t *pud = NULL;
@@ -298,30 +296,24 @@ static void print_field(struct seq_file *m, struct vm_area_struct *vma, struct m
 	if (PageHighMem(pfn_to_page(pmd_val(*pmd) >> PAGE_SHIFT)))
 		return;
 
-
- 
 	pte = pte_offset_map_lock(mm, pmd, addr, &ptl);
  
-
-	//pte = pte_offset_map(pmd, addr);
 	pte_unmap_unlock(pte,ptl);
 
 	if (!pte_present(*pte)){
 		seq_printf(m, ".");
 	}else{
 		page = follow_page(vma, addr, 0);
+
 		if(IS_ERR_OR_NULL(page))
 			return;
 
 		num_ref = page_mapcount(page);
-		//num_ref = page_count(page);
 		if(num_ref <= 9){
 			seq_printf(m, "%d", num_ref);
 		}else{
 			seq_printf(m, "x");
 		}
-
-
 	}
 
 }
@@ -338,11 +330,9 @@ static unsigned long convert_vaddr_to_paddr(struct mm_struct *mm, unsigned long 
 	pmd_t *pmd = NULL;
 	pte_t *pte = NULL;
 
-	if (!mm) {//kernel
+	if (!mm) {
 		return 0;
 	}
-
-
 
 	pgd = pgd_offset(mm,addr);
 
@@ -415,7 +405,7 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 		end -= PAGE_SIZE;
 
 	pstart = convert_vaddr_to_paddr(mm,start);
-	pend = convert_vaddr_to_paddr(mm,end-1)+1;
+	pend = convert_vaddr_to_paddr(mm,end-1) + 1;
 
 	seq_printf(m, "%08lx-%08lx %c%c%c%c %08llx %02x:%02x %lu %08lx-%08lx %n",
 			start,
@@ -434,9 +424,6 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 		print_field(m,vma,mm,cur);
 		cur += PAGE_SIZE;
 	}
-
-	
-
 
 
 	/*
