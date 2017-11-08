@@ -1,2 +1,2 @@
-# Linux_kernel_vir_mem
+# Linux_kernel_virt_mem
 memory administration
